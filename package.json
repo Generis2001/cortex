@@ -21,7 +21,7 @@
   ],
   "license": "MIT",
   "engines": {
-    "node": ">=20"
+    "node": "24.x"
   },
   "dependencies": {
     "@okxweb3/x402-core": "^0.1.0",
