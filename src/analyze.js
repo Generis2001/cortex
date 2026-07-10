@@ -60,7 +60,7 @@ const DOCUMENT_TYPES = [
 ];
 
 const DATE_PATTERN = /\b(?:\d{4}-\d{2}-\d{2}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2},?\s+\d{4})\b/gi;
-const MONEY_PATTERN = /\b(?:USD|US\$|EUR|GBP|NGN|OKB|OKT|ETH|BTC|USDT|USDC|\$|\u20AC|\u00A3|\u20A6)\s?\d{1,3}(?:,\d{3})*(?:\.\d{2,8})?\b/gi;
+const MONEY_PATTERN = /(?:\b(?:USD|US\$|EUR|GBP|NGN|OKB|OKT|ETH|BTC|USDT|USDC)|\$|\u20AC|\u00A3|\u20A6)\s?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{2,8})?\b/gi;
 const EMAIL_PATTERN = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi;
 const PHONE_PATTERN = /\b(?:\+?\d{1,3}[\s.-]?)?(?:\(?\d{3}\)?[\s.-]?)\d{3}[\s.-]?\d{4}\b/g;
 const URL_PATTERN = /\bhttps?:\/\/[^\s)]+/gi;

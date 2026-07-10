@@ -109,3 +109,11 @@ test("uses configured OCR provider for images", async () => {
 test("rejects empty document text", async () => {
   await assert.rejects(() => analyzeDocument({ text: "" }), /non-empty text|non-empty document text|include non-empty text/i);
 });
+
+test("extracts ungrouped monetary values with four or more digits", async () => {
+  const result = await analyzeDocument({
+    text: "Invoice INV-42. Acme Corp must pay USD 1250 by August 15, 2026. Late payment incurs a 5% penalty.",
+  });
+
+  assert.ok(result.entities.monetary_values.includes("USD 1250"));
+});
