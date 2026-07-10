@@ -166,6 +166,374 @@ function sendJson(statusCode, body, extraHeaders = {}) {
   };
 }
 
+function sendHtml(statusCode, body, extraHeaders = {}) {
+  return {
+    statusCode,
+    headers: {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-store",
+      ...extraHeaders,
+    },
+    body,
+  };
+}
+
+function prefersHtml(headers) {
+  const accept = headers.accept || "";
+  return accept.includes("text/html") && !accept.includes("application/json");
+}
+
+function buildLandingPage(config) {
+  const paymentMode = x402Configured(config) ? "x402" : "free";
+  const serviceDescriptorUrl = `${config.serviceBaseUrl}/.well-known/asp.json`;
+  const openApiUrl = `${config.serviceBaseUrl}/openapi.json`;
+  const analyzeUrl = `${config.serviceBaseUrl}/v1/intelligence`;
+  const healthUrl = `${config.serviceBaseUrl}/health`;
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cortex | Document Intelligence ASP</title>
+  <style>
+    :root {
+      --bg: #f3efe4;
+      --panel: rgba(250, 247, 240, 0.88);
+      --panel-strong: #fffaf0;
+      --text: #1f1f1c;
+      --muted: #5c594f;
+      --accent: #bc5a45;
+      --accent-deep: #7f2d1f;
+      --line: rgba(31, 31, 28, 0.12);
+      --shadow: 0 22px 60px rgba(72, 44, 27, 0.16);
+      --radius: 24px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(188, 90, 69, 0.22), transparent 38%),
+        radial-gradient(circle at top right, rgba(18, 93, 86, 0.15), transparent 34%),
+        linear-gradient(180deg, #f8f2e7 0%, var(--bg) 58%, #efe6d6 100%);
+      font-family: "Avenir Next", "Gill Sans", "Trebuchet MS", sans-serif;
+    }
+    a { color: inherit; }
+    .shell {
+      width: min(1120px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 32px 0 48px;
+    }
+    .hero,
+    .grid-card,
+    .terminal,
+    .surface-card {
+      background: var(--panel);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.72);
+      box-shadow: var(--shadow);
+    }
+    .hero {
+      position: relative;
+      overflow: hidden;
+      border-radius: calc(var(--radius) + 6px);
+      padding: 32px;
+    }
+    .hero::after {
+      content: "";
+      position: absolute;
+      inset: auto -8% -42% 36%;
+      height: 320px;
+      background: radial-gradient(circle, rgba(188, 90, 69, 0.34), transparent 58%);
+      pointer-events: none;
+    }
+    .eyebrow {
+      display: inline-flex;
+      gap: 10px;
+      align-items: center;
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      color: var(--muted);
+      background: rgba(255, 255, 255, 0.56);
+      font-size: 12px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
+    h1, h2, h3 {
+      margin: 0;
+      font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Palatino, serif;
+      font-weight: 700;
+      line-height: 0.96;
+    }
+    h1 {
+      margin-top: 22px;
+      max-width: 10ch;
+      font-size: clamp(3.2rem, 7vw, 6.4rem);
+      letter-spacing: -0.05em;
+    }
+    .hero-copy {
+      margin: 18px 0 0;
+      max-width: 59ch;
+      color: var(--muted);
+      font-size: 1.08rem;
+      line-height: 1.65;
+    }
+    .hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 28px;
+    }
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 14px 18px;
+      border-radius: 999px;
+      text-decoration: none;
+      font-weight: 700;
+      border: 1px solid var(--line);
+      transition: transform 180ms ease, background 180ms ease;
+    }
+    .button:hover { transform: translateY(-1px); }
+    .button-primary {
+      background: linear-gradient(135deg, var(--accent), var(--accent-deep));
+      color: #fff7f0;
+      border-color: transparent;
+    }
+    .button-secondary {
+      background: rgba(255, 255, 255, 0.68);
+    }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 28px;
+      position: relative;
+      z-index: 1;
+    }
+    .stat {
+      padding: 18px;
+      border-radius: 20px;
+      background: rgba(255, 250, 240, 0.92);
+      border: 1px solid var(--line);
+    }
+    .stat strong {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 1.55rem;
+      font-family: "Iowan Old Style", "Palatino Linotype", serif;
+    }
+    .stat span {
+      display: block;
+      color: var(--muted);
+      line-height: 1.45;
+      font-size: 0.96rem;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 18px;
+      margin-top: 18px;
+    }
+    .grid-card,
+    .surface-card {
+      border-radius: var(--radius);
+      padding: 24px;
+    }
+    .section-label {
+      display: block;
+      margin-bottom: 12px;
+      color: var(--muted);
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      font-size: 0.76rem;
+    }
+    .feature-list,
+    .surface-list {
+      display: grid;
+      gap: 14px;
+      margin-top: 18px;
+    }
+    .feature {
+      padding: 16px 18px;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.58);
+      border: 1px solid var(--line);
+    }
+    .feature strong,
+    .surface-list strong {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 1rem;
+    }
+    .feature span,
+    .surface-list span {
+      display: block;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+    .surface-list a {
+      text-decoration: none;
+      word-break: break-all;
+    }
+    .surface-list > div {
+      padding: 16px 18px;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.62);
+      border: 1px solid var(--line);
+    }
+    .terminal {
+      margin-top: 18px;
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    .terminal-bar {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(41, 33, 27, 0.92);
+      color: #f5eadb;
+      font-size: 0.82rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: #f3b43f;
+      box-shadow: 16px 0 0 #df6a57, 32px 0 0 #4f9c88;
+      margin-right: 28px;
+    }
+    pre {
+      margin: 0;
+      padding: 24px;
+      overflow: auto;
+      color: #f7f1e8;
+      background:
+        linear-gradient(180deg, rgba(19, 19, 18, 0.96), rgba(39, 33, 31, 0.98));
+      font: 0.94rem/1.75 "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+    }
+    .footer-note {
+      margin-top: 18px;
+      color: var(--muted);
+      font-size: 0.94rem;
+      line-height: 1.6;
+    }
+    @media (max-width: 900px) {
+      .stats,
+      .grid {
+        grid-template-columns: 1fr;
+      }
+      h1 {
+        max-width: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="hero">
+      <div class="eyebrow">Cortex <span>Document Intelligence ASP</span></div>
+      <h1>Structured document intelligence for agents.</h1>
+      <p class="hero-copy">
+        Cortex converts raw documents into machine-readable intelligence for autonomous agents, contracts,
+        apps, and workflows on X Layer. The browser view is human-facing; the production surface remains a
+        deterministic A2MCP API.
+      </p>
+      <div class="hero-actions">
+        <a class="button button-primary" href="${analyzeUrl}">Analyze Endpoint</a>
+        <a class="button button-secondary" href="${openApiUrl}">OpenAPI Schema</a>
+        <a class="button button-secondary" href="${serviceDescriptorUrl}">ASP Metadata</a>
+      </div>
+      <div class="stats">
+        <div class="stat">
+          <strong>A2MCP</strong>
+          <span>Standardized API surface for OKX.AI and downstream agents.</span>
+        </div>
+        <div class="stat">
+          <strong>${paymentMode}</strong>
+          <span>Current payment mode exposed by the production runtime.</span>
+        </div>
+        <div class="stat">
+          <strong>JSON</strong>
+          <span>Schema-aligned output for entities, obligations, risks, and deadlines.</span>
+        </div>
+        <div class="stat">
+          <strong>X Layer</strong>
+          <span>Structured for onchain workflows, automation, and verification steps.</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="grid">
+      <article class="grid-card">
+        <span class="section-label">Extraction Surface</span>
+        <h2>What Cortex emits</h2>
+        <div class="feature-list">
+          <div class="feature">
+            <strong>Typed document classification</strong>
+            <span>Invoice, contract, receipt, technical docs, reports, proposals, and other structured classes.</span>
+          </div>
+          <div class="feature">
+            <strong>Traceable entities and spans</strong>
+            <span>People, organizations, dates, monetary values, IDs, digital identifiers, and evidence offsets.</span>
+          </div>
+          <div class="feature">
+            <strong>Agent-ready execution data</strong>
+            <span>Obligations, decisions, deadlines, explicit and inferred risks, next actions, and missing information.</span>
+          </div>
+        </div>
+      </article>
+
+      <aside class="surface-card">
+        <span class="section-label">Machine Surface</span>
+        <h2>Production endpoints</h2>
+        <div class="surface-list">
+          <div>
+            <strong>Health</strong>
+            <span><a href="${healthUrl}">${healthUrl}</a></span>
+          </div>
+          <div>
+            <strong>ASP metadata</strong>
+            <span><a href="${serviceDescriptorUrl}">${serviceDescriptorUrl}</a></span>
+          </div>
+          <div>
+            <strong>OpenAPI</strong>
+            <span><a href="${openApiUrl}">${openApiUrl}</a></span>
+          </div>
+          <div>
+            <strong>Analyze</strong>
+            <span><a href="${analyzeUrl}">${analyzeUrl}</a></span>
+          </div>
+        </div>
+      </aside>
+    </section>
+
+    <section class="terminal">
+      <div class="terminal-bar"><span class="dot"></span>Live request example</div>
+      <pre>curl ${analyzeUrl} \\
+  -H 'content-type: application/json' \\
+  -d '{
+    "text": "Invoice INV-42. Acme Corp must pay USD 1250 by August 15, 2026. Late payment incurs a 5% penalty."
+  }'</pre>
+    </section>
+
+    <p class="footer-note">
+      API clients can continue using <code>/</code> as a JSON discovery route by sending
+      <code>Accept: application/json</code>. Browsers receive this landing page by default.
+    </p>
+  </main>
+</body>
+</html>`;
+}
+
 async function readJsonBody(body) {
   if (!body) return {};
   if (typeof body === "string") return JSON.parse(body);
@@ -264,6 +632,9 @@ export async function handleHttpRequest(requestLike, runtimeConfig = buildRuntim
   if (rateLimitError) return rateLimitError;
 
   if (method === "GET" && url.pathname === "/") {
+    if (prefersHtml(headers)) {
+      return sendHtml(200, buildLandingPage(config));
+    }
     return sendJson(200, {
       name: "cortex",
       status: "ok",

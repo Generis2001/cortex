@@ -7,11 +7,15 @@ test("serves health and asp metadata without binding a socket", async () => {
   const config = buildRuntimeConfig({ HOST: "127.0.0.1", PORT: "8787" });
 
   const root = await handleHttpRequest({ method: "GET", url: "/" }, config);
+  const rootHtml = await handleHttpRequest({ method: "GET", url: "/", headers: { accept: "text/html" } }, config);
   const health = await handleHttpRequest({ method: "GET", url: "/health" }, config);
   const meta = await handleHttpRequest({ method: "GET", url: "/.well-known/asp.json" }, config);
 
   assert.equal(root.statusCode, 200);
   assert.equal(JSON.parse(root.body).name, "cortex");
+  assert.equal(rootHtml.statusCode, 200);
+  assert.match(rootHtml.headers["content-type"], /^text\/html;/);
+  assert.match(rootHtml.body, /Structured document intelligence for agents\./);
   assert.equal(health.statusCode, 200);
   assert.equal(JSON.parse(health.body).status, "ok");
   assert.equal(meta.statusCode, 200);
