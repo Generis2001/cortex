@@ -14,6 +14,32 @@ The parties agreed that payment will be held in escrow until approval.
 Contact: ops@example.com
 `;
 
+const samplePdfBase64 = Buffer.from(`%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Count 1 /Kids [3 0 R] >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] /Contents 4 0 R >>
+endobj
+4 0 obj
+<< /Length 96 >>
+stream
+BT
+/F1 12 Tf
+72 100 Td
+(Invoice INV-2001) Tj
+0 -16 Td
+(Acme Corp LLC must pay USD 500 by July 31, 2026.) Tj
+ET
+endstream
+endobj
+trailer
+<< /Root 1 0 R >>
+%%EOF`, "utf8").toString("base64");
+
 test("extracts schema-aligned intelligence from a contract", () => {
   const result = analyzeDocument({ text: sampleContract });
 
@@ -21,7 +47,9 @@ test("extracts schema-aligned intelligence from a contract", () => {
   assert.equal(typeof result.summary, "string");
   assert.ok(result.entities.organizations.includes("Acme Corp LLC"));
   assert.ok(result.entities.monetary_values.includes("USD 12,500"));
+  assert.ok(result.entities.evidence.organizations[0].source_spans.length >= 1);
   assert.ok(result.obligations.length >= 2);
+  assert.ok(result.obligations[0].source_spans.length >= 1);
   assert.ok(result.deadlines.length >= 1);
   assert.ok(result.decisions.length >= 1);
   assert.ok(result.risks.some((risk) => risk.type === "explicit"));
@@ -30,6 +58,21 @@ test("extracts schema-aligned intelligence from a contract", () => {
   assert.equal(typeof result.confidence_score, "number");
 });
 
+test("ingests base64 pdf content without external pdf binaries", () => {
+  const result = analyzeDocument({
+    document: {
+      filename: "invoice.pdf",
+      content_type: "application/pdf",
+      content_base64: samplePdfBase64,
+    },
+  });
+
+  assert.equal(result.document_type, "Invoice");
+  assert.ok(result.entities.ids.includes("INV-2001"));
+  assert.ok(result.entities.monetary_values.includes("USD 500"));
+  assert.ok(result.missing_information.some((item) => item.reason.includes("text-layer based")));
+});
+
 test("rejects empty document text", () => {
-  assert.throws(() => analyzeDocument({ text: "" }), /non-empty document text/);
+  assert.throws(() => analyzeDocument({ text: "" }), /non-empty text|non-empty document text|include non-empty text/i);
 });

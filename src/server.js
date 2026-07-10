@@ -1,158 +1,232 @@
 import http from "node:http";
 import { analyzeDocument } from "./analyze.js";
 
-const PORT = Number.parseInt(process.env.PORT || "8787", 10);
-const HOST = process.env.HOST || "127.0.0.1";
-const SERVICE_BASE_URL = process.env.SERVICE_BASE_URL || `http://${HOST}:${PORT}`;
+export function buildRuntimeConfig(env = process.env) {
+  const port = Number.parseInt(env.PORT || "8787", 10);
+  const host = env.HOST || "127.0.0.1";
+  const serviceBaseUrl = env.SERVICE_BASE_URL || `http://${host}:${port}`;
 
-const serviceDescriptor = {
-  name: "cortex",
-  provider_type: "Agent Service Provider",
-  ecosystem: "X Layer",
-  description: "Document Intelligence ASP that transforms unstructured documents into structured, agent-consumable intelligence.",
-  service_type: "A2MCP",
-  payment_mode: "free",
-  endpoints: {
-    health: `${SERVICE_BASE_URL}/health`,
-    analyze: `${SERVICE_BASE_URL}/v1/intelligence`,
-    openapi: `${SERVICE_BASE_URL}/openapi.json`,
-  },
-  output_schema: {
-    document_type: "string",
-    summary: "string",
-    entities: "object",
-    obligations: "array",
-    deadlines: "array",
-    decisions: "array",
-    risks: "array",
-    action_items: "array",
-    missing_information: "array",
-    confidence_score: "number",
-  },
-};
+  return {
+    port,
+    host,
+    serviceBaseUrl,
+    apiKey: env.CORTEX_API_KEY || "",
+    rateLimitWindowMs: Number.parseInt(env.RATE_LIMIT_WINDOW_MS || "60000", 10),
+    rateLimitMaxRequests: Number.parseInt(env.RATE_LIMIT_MAX_REQUESTS || "60", 10),
+  };
+}
 
-const openApi = {
-  openapi: "3.1.0",
-  info: {
-    title: "Cortex Document Intelligence ASP",
-    version: "0.1.0",
-    description: serviceDescriptor.description,
-  },
-  servers: [{ url: SERVICE_BASE_URL }],
-  paths: {
-    "/health": {
-      get: {
-        summary: "Service health check",
-        responses: {
-          "200": {
-            description: "Service is healthy",
-          },
-        },
-      },
+const rateLimitStore = new Map();
+
+function normalizeHeaders(headers = {}) {
+  return Object.fromEntries(Object.entries(headers).map(([key, value]) => [key.toLowerCase(), value]));
+}
+
+function buildServiceDescriptor(config) {
+  return {
+    name: "cortex",
+    provider_type: "Agent Service Provider",
+    ecosystem: "X Layer",
+    description: "Document Intelligence ASP that transforms unstructured documents into structured, agent-consumable intelligence.",
+    service_type: "A2MCP",
+    payment_mode: "free",
+    endpoints: {
+      health: `${config.serviceBaseUrl}/health`,
+      analyze: `${config.serviceBaseUrl}/v1/intelligence`,
+      openapi: `${config.serviceBaseUrl}/openapi.json`,
     },
-    "/.well-known/asp.json": {
-      get: {
-        summary: "ASP service descriptor",
-        responses: {
-          "200": {
-            description: "Cortex ASP metadata",
-          },
-        },
-      },
+    auth: config.apiKey ? "bearer" : "none",
+    rate_limit: {
+      window_ms: config.rateLimitWindowMs,
+      max_requests: config.rateLimitMaxRequests,
     },
-    "/v1/intelligence": {
-      post: {
-        summary: "Extract structured document intelligence",
-        requestBody: {
-          required: true,
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                required: ["text"],
-                properties: {
-                  text: { type: "string", minLength: 1 },
-                  metadata: { type: "object" },
+    output_schema: {
+      document_type: "string",
+      summary: "string",
+      entities: "object",
+      obligations: "array",
+      deadlines: "array",
+      decisions: "array",
+      risks: "array",
+      action_items: "array",
+      missing_information: "array",
+      confidence_score: "number",
+    },
+  };
+}
+
+function buildOpenApi(config) {
+  return {
+    openapi: "3.1.0",
+    info: {
+      title: "Cortex Document Intelligence ASP",
+      version: "0.2.0",
+      description: "Deterministic document intelligence extraction for autonomous agents and X Layer workflows.",
+    },
+    servers: [{ url: config.serviceBaseUrl }],
+    paths: {
+      "/health": {
+        get: { summary: "Service health check", responses: { "200": { description: "Service is healthy" } } },
+      },
+      "/.well-known/asp.json": {
+        get: { summary: "ASP service descriptor", responses: { "200": { description: "Cortex ASP metadata" } } },
+      },
+      "/openapi.json": {
+        get: { summary: "OpenAPI document", responses: { "200": { description: "OpenAPI schema" } } },
+      },
+      "/v1/intelligence": {
+        post: {
+          summary: "Extract structured document intelligence",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    text: { type: "string", minLength: 1 },
+                    document: {
+                      type: "object",
+                      properties: {
+                        filename: { type: "string" },
+                        content_type: { type: "string" },
+                        content_base64: { type: "string" },
+                      },
+                    },
+                    metadata: { type: "object" },
+                  },
+                  anyOf: [{ required: ["text"] }, { required: ["document"] }],
                 },
               },
             },
           },
-        },
-        responses: {
-          "200": {
-            description: "Structured document intelligence",
-          },
-          "400": {
-            description: "Invalid request payload",
+          responses: {
+            "200": { description: "Structured document intelligence" },
+            "400": { description: "Invalid request payload" },
+            "401": { description: "Missing or invalid bearer token" },
+            "429": { description: "Rate limit exceeded" },
           },
         },
       },
     },
-  },
-};
-
-function sendJson(response, statusCode, body) {
-  response.writeHead(statusCode, {
-    "content-type": "application/json; charset=utf-8",
-    "cache-control": "no-store",
-  });
-  response.end(JSON.stringify(body, null, 2));
+  };
 }
 
-async function readJson(request) {
-  const chunks = [];
-  for await (const chunk of request) {
-    chunks.push(chunk);
-  }
-
-  const raw = Buffer.concat(chunks).toString("utf8");
-  if (!raw.trim()) return {};
-  return JSON.parse(raw);
+function sendJson(statusCode, body, extraHeaders = {}) {
+  return {
+    statusCode,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
+      ...extraHeaders,
+    },
+    body: JSON.stringify(body, null, 2),
+  };
 }
 
-async function handleRequest(request, response) {
-  const url = new URL(request.url || "/", SERVICE_BASE_URL);
+async function readJsonBody(body) {
+  if (!body) return {};
+  if (typeof body === "string") return JSON.parse(body);
+  if (Buffer.isBuffer(body)) return JSON.parse(body.toString("utf8"));
+  if (typeof body === "object") return body;
+  throw new TypeError("Unsupported request body format");
+}
 
-  if (request.method === "GET" && url.pathname === "/health") {
-    sendJson(response, 200, { status: "ok", service: "cortex" });
-    return;
+function checkRateLimit(config, clientId) {
+  if (!Number.isFinite(config.rateLimitMaxRequests) || config.rateLimitMaxRequests <= 0) return null;
+
+  const now = Date.now();
+  const windowStart = now - config.rateLimitWindowMs;
+  const bucket = rateLimitStore.get(clientId) || [];
+  const active = bucket.filter((timestamp) => timestamp > windowStart);
+
+  if (active.length >= config.rateLimitMaxRequests) {
+    rateLimitStore.set(clientId, active);
+    return sendJson(429, { error: "Rate limit exceeded" }, { "retry-after": String(Math.ceil(config.rateLimitWindowMs / 1000)) });
   }
 
-  if (request.method === "GET" && url.pathname === "/.well-known/asp.json") {
-    sendJson(response, 200, serviceDescriptor);
-    return;
+  active.push(now);
+  rateLimitStore.set(clientId, active);
+  return null;
+}
+
+function requireAuth(config, pathname, headers) {
+  if (!config.apiKey || pathname === "/health" || pathname === "/.well-known/asp.json" || pathname === "/openapi.json") {
+    return null;
   }
 
-  if (request.method === "GET" && url.pathname === "/openapi.json") {
-    sendJson(response, 200, openApi);
-    return;
+  const authorization = headers.authorization || "";
+  if (authorization === `Bearer ${config.apiKey}`) return null;
+
+  return sendJson(401, { error: "Missing or invalid bearer token" }, { "www-authenticate": 'Bearer realm="cortex"' });
+}
+
+export async function handleHttpRequest(requestLike, runtimeConfig = buildRuntimeConfig()) {
+  const config = runtimeConfig;
+  const method = requestLike.method || "GET";
+  const url = new URL(requestLike.url || "/", config.serviceBaseUrl);
+  const headers = normalizeHeaders(requestLike.headers);
+  const authError = requireAuth(config, url.pathname, headers);
+  if (authError) return authError;
+
+  const clientId = requestLike.remoteAddress || headers["x-forwarded-for"] || "local";
+  const rateLimitError = checkRateLimit(config, `${clientId}:${url.pathname}`);
+  if (rateLimitError) return rateLimitError;
+
+  if (method === "GET" && url.pathname === "/health") {
+    return sendJson(200, { status: "ok", service: "cortex" });
   }
 
-  if (request.method === "POST" && url.pathname === "/v1/intelligence") {
+  if (method === "GET" && url.pathname === "/.well-known/asp.json") {
+    return sendJson(200, buildServiceDescriptor(config));
+  }
+
+  if (method === "GET" && url.pathname === "/openapi.json") {
+    return sendJson(200, buildOpenApi(config));
+  }
+
+  if (method === "POST" && url.pathname === "/v1/intelligence") {
     try {
-      const payload = await readJson(request);
+      const payload = await readJsonBody(requestLike.body);
       const result = analyzeDocument(payload);
-      sendJson(response, 200, result);
+      return sendJson(200, result);
     } catch (error) {
       const message = error instanceof SyntaxError ? "Request body must be valid JSON" : error.message;
-      sendJson(response, 400, { error: message });
+      return sendJson(400, { error: message });
     }
-    return;
   }
 
-  sendJson(response, 404, { error: "Not found" });
+  return sendJson(404, { error: "Not found" });
 }
 
-export function createServer() {
-  return http.createServer((request, response) => {
-    handleRequest(request, response).catch((error) => {
-      sendJson(response, 500, { error: "Internal server error", detail: error.message });
-    });
+export function resetRateLimitStore() {
+  rateLimitStore.clear();
+}
+
+export function createServer(runtimeConfig = buildRuntimeConfig()) {
+  return http.createServer(async (request, response) => {
+    const chunks = [];
+    for await (const chunk of request) chunks.push(chunk);
+
+    const result = await handleHttpRequest(
+      {
+        method: request.method,
+        url: request.url,
+        headers: request.headers,
+        body: chunks.length > 0 ? Buffer.concat(chunks) : undefined,
+        remoteAddress: request.socket?.remoteAddress,
+      },
+      runtimeConfig
+    ).catch((error) => sendJson(500, { error: "Internal server error", detail: error.message }));
+
+    response.writeHead(result.statusCode, result.headers);
+    response.end(result.body);
   });
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  createServer().listen(PORT, HOST, () => {
-    console.log(`cortex ASP listening on ${SERVICE_BASE_URL}`);
+  const config = buildRuntimeConfig();
+  createServer(config).listen(config.port, config.host, () => {
+    console.log(`cortex ASP listening on ${config.serviceBaseUrl}`);
   });
 }

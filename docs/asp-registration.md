@@ -35,12 +35,18 @@ Service list:
 - Risk detection
 - Missing-information detection
 - Action-item generation for agent and X Layer workflow automation
+- Source-span traceability for downstream verification
+- PDF text-layer ingestion
 
 Default pricing:
 
-- Free while endpoint is unauthenticated and does not enforce x402.
+- Free while endpoint is unauthenticated or protected only by API key and does not enforce x402.
 - For paid A2MCP, configure a fixed per-call price after x402 integration.
 - For A2A, use fixed or negotiated pricing for high-touch document review, verification, and custom workflow packaging.
+
+## Constraint Handling
+
+The development sandbox used for this scaffold blocks opening a listening socket. As a substitute, the HTTP contract is verified with in-process request-handler tests rather than live local `curl` requests.
 
 ## Onchain OS Flow
 
@@ -70,9 +76,9 @@ Help me list my ASP on OKX.AI using Onchain OS and follow the steps.
 
 ## Production Readiness Gaps
 
-- Add OCR/PDF parsing for binary documents.
+- Add a real OCR backend for scanned PDFs and images.
 - Add model-backed extraction with citation spans for higher recall.
-- Add document hashing and source-span traceability.
+- Add document hashing and signature verification for stronger provenance.
 - Add x402 payment enforcement for paid A2MCP.
-- Add authentication, rate limits, logging, and abuse controls.
+- Move API-key auth and in-memory rate limiting to production-grade gateway controls.
 - Add persistent storage only if downstream workflows require auditable document records.
