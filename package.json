@@ -1,0 +1,24 @@
+{
+  "name": "cortex",
+  "version": "0.1.0",
+  "description": "Document Intelligence Agent Service Provider for X Layer agent workflows.",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node --test",
+    "lint": "node --check src/*.js test/*.test.js"
+  },
+  "keywords": [
+    "x-layer",
+    "okx",
+    "asp",
+    "agent-service-provider",
+    "document-intelligence"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  }
+}
