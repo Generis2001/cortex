@@ -19,10 +19,17 @@ export function buildRuntimeConfig(env = process.env) {
     rateLimitWindowMs: Number.parseInt(env.RATE_LIMIT_WINDOW_MS || "60000", 10),
     rateLimitMaxRequests: Number.parseInt(env.RATE_LIMIT_MAX_REQUESTS || "60", 10),
     ocr: {
+      provider: env.CORTEX_OCR_PROVIDER || "",
       providerUrl: env.CORTEX_OCR_PROVIDER_URL || "",
       apiKey: env.CORTEX_OCR_API_KEY || "",
       authHeader: env.CORTEX_OCR_AUTH_HEADER || "authorization",
       model: env.CORTEX_OCR_MODEL || "",
+      endpoint: env.CORTEX_OCR_ENDPOINT || "",
+      language: env.CORTEX_OCR_LANGUAGE || "eng",
+      engine: env.CORTEX_OCR_ENGINE || "",
+      isTable: env.CORTEX_OCR_IS_TABLE === "true",
+      detectOrientation: env.CORTEX_OCR_DETECT_ORIENTATION === "true",
+      scale: env.CORTEX_OCR_SCALE === "true",
     },
     x402: {
       enabled: env.CORTEX_X402_ENABLED === "true",
@@ -319,6 +326,8 @@ export function createExpressApp(runtimeConfig = buildRuntimeConfig()) {
 export function createServer(runtimeConfig = buildRuntimeConfig()) {
   return http.createServer(createExpressApp(runtimeConfig));
 }
+
+export default createExpressApp(buildRuntimeConfig());
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const config = buildRuntimeConfig();

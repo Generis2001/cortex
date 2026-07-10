@@ -81,10 +81,14 @@ Expected response:
 ```
 
 Optional OCR env vars:
+- `CORTEX_OCR_PROVIDER=ocr_space` for OCR.space integration
 - `CORTEX_OCR_PROVIDER_URL`
 - `CORTEX_OCR_API_KEY`
 - `CORTEX_OCR_AUTH_HEADER`
 - `CORTEX_OCR_MODEL`
+- `CORTEX_OCR_ENDPOINT`
+- `CORTEX_OCR_LANGUAGE`
+- `CORTEX_OCR_ENGINE`
 
 ## Payment Modes
 
@@ -101,6 +105,15 @@ Paid A2MCP mode via x402:
 - Optional: `CORTEX_X402_PRICE`, `CORTEX_X402_NETWORK`, `OKX_BASE_URL`
 
 In x402 mode, Cortex protects `POST /v1/intelligence` with the official OKX Payment SDK middleware.
+
+## Free Submission Strategy
+
+Recommended for initial OKX submission:
+- Deploy on Vercel Hobby
+- Keep OCR off unless you have a real OCR provider key
+- Keep x402 off unless you already have working OKX credentials
+
+This keeps the service zero-cost and still fully valid as an A2MCP submission.
 
 ## Run Locally
 
@@ -139,3 +152,8 @@ This environment blocks opening a listening socket, so HTTP behavior is validate
 ## ASP Registration
 
 See [docs/asp-registration.md](/home/generisx/cortex/docs/asp-registration.md).
+
+## Deployment
+
+- [Vercel Deployment](/home/generisx/cortex/docs/deployment-vercel.md)
+- [Submission Checklist](/home/generisx/cortex/docs/submission-checklist.md)

@@ -8,7 +8,9 @@
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
     "test": "node --test",
-    "lint": "node --check src/*.js test/*.test.js"
+    "lint": "node --check src/*.js scripts/*.js test/*.test.js",
+    "check:submission": "node scripts/check-submission.js",
+    "smoke:ocr-space": "node scripts/ocr-space-smoke.js"
   },
   "keywords": [
     "x-layer",

@@ -178,12 +178,63 @@ function buildOcrHeaders(ocrConfig) {
   return headers;
 }
 
+function buildOcrSpaceFormData({ buffer, filename, contentType, ocrConfig }) {
+  const form = new FormData();
+  form.set("base64Image", `data:${contentType};base64,${buffer.toString("base64")}`);
+  form.set("language", ocrConfig.language || "eng");
+  form.set("isOverlayRequired", "false");
+  form.set("isTable", ocrConfig.isTable ? "true" : "false");
+  form.set("detectOrientation", ocrConfig.detectOrientation ? "true" : "false");
+  form.set("scale", ocrConfig.scale ? "true" : "false");
+  if (ocrConfig.engine) form.set("OCREngine", String(ocrConfig.engine));
+  if (filename) form.set("filetype", filename.split(".").pop() || "");
+  return form;
+}
+
+async function requestOcrSpaceText({ buffer, filename, contentType, ocrConfig, fetchImpl }) {
+  const endpoint = ocrConfig.endpoint || "https://api.ocr.space/parse/image";
+  const apiKey = ocrConfig.apiKey;
+  if (!apiKey) {
+    throw new TypeError("OCR.space requires CORTEX_OCR_API_KEY");
+  }
+
+  const response = await fetchImpl(endpoint, {
+    method: "POST",
+    headers: { apikey: apiKey },
+    body: buildOcrSpaceFormData({ buffer, filename, contentType, ocrConfig }),
+  });
+
+  if (!response.ok) {
+    throw new TypeError(`OCR.space request failed with status ${response.status}`);
+  }
+
+  const payload = await response.json();
+  if (payload?.IsErroredOnProcessing) {
+    const errorMessage = Array.isArray(payload.ErrorMessage) ? payload.ErrorMessage.join("; ") : payload.ErrorMessage || "Unknown OCR.space error";
+    throw new TypeError(`OCR.space error: ${errorMessage}`);
+  }
+
+  const parsedText = Array.isArray(payload?.ParsedResults)
+    ? payload.ParsedResults.map((result) => result?.ParsedText || "").join("\n").trim()
+    : "";
+
+  if (!parsedText) {
+    throw new TypeError("OCR.space response did not contain parsed text");
+  }
+
+  return parsedText;
+}
+
 async function requestOcrText({ buffer, filename, contentType, metadata, ocrConfig }) {
-  if (!ocrConfig?.providerUrl) return null;
+  if (!ocrConfig?.providerUrl && ocrConfig?.provider !== "ocr_space") return null;
 
   const fetchImpl = ocrConfig.fetchImpl || globalThis.fetch;
   if (typeof fetchImpl !== "function") {
     throw new TypeError("OCR provider is configured, but fetch is unavailable in this runtime");
+  }
+
+  if (ocrConfig.provider === "ocr_space") {
+    return requestOcrSpaceText({ buffer, filename, contentType, ocrConfig, fetchImpl });
   }
 
   const response = await fetchImpl(ocrConfig.providerUrl, {

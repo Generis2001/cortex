@@ -46,6 +46,17 @@ Default pricing:
 - Paid A2MCP once `CORTEX_X402_ENABLED=true` and OKX Payment SDK credentials are configured.
 - For A2A, use fixed or negotiated pricing for high-touch document review, verification, and custom workflow packaging.
 
+## Zero-Cost Submission Recommendation
+
+For the initial marketplace submission:
+
+- Deploy in free mode
+- Use Vercel Hobby as the no-cost demo environment
+- Leave x402 disabled until you have verified OKX credentials
+- Leave OCR disabled unless you have a concrete OCR key or endpoint
+
+This reduces review friction and keeps the submission zero-cost while preserving the A2MCP classification.
+
 ## Constraint Handling
 
 The development sandbox used for this scaffold blocks opening a listening socket. As a substitute, the HTTP contract is verified with in-process request-handler tests rather than live local `curl` requests.
@@ -101,7 +112,7 @@ Help me list my ASP on OKX.AI using Onchain OS and follow the steps.
 
 ## Remaining Production Gaps
 
-- Replace the generic OCR-provider contract with a specific production OCR system and SLAs.
+- Validate a concrete OCR provider with your own scanned sample corpus.
 - Add model-backed extraction with higher-recall citation logic if deterministic heuristics are insufficient.
 - Move API-key auth and in-memory rate limiting to production-grade gateway controls.
 - Add persistent storage only if downstream workflows require auditable document records.
