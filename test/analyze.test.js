@@ -40,11 +40,12 @@ trailer
 << /Root 1 0 R >>
 %%EOF`, "utf8").toString("base64");
 
-test("extracts schema-aligned intelligence from a contract", () => {
-  const result = analyzeDocument({ text: sampleContract });
+test("extracts schema-aligned intelligence from a contract", async () => {
+  const result = await analyzeDocument({ text: sampleContract });
 
   assert.equal(result.document_type, "Contract");
   assert.equal(typeof result.summary, "string");
+  assert.equal(result.provenance.hash_algorithm, "sha256");
   assert.ok(result.entities.organizations.includes("Acme Corp LLC"));
   assert.ok(result.entities.monetary_values.includes("USD 12,500"));
   assert.ok(result.entities.evidence.organizations[0].source_spans.length >= 1);
@@ -58,8 +59,8 @@ test("extracts schema-aligned intelligence from a contract", () => {
   assert.equal(typeof result.confidence_score, "number");
 });
 
-test("ingests base64 pdf content without external pdf binaries", () => {
-  const result = analyzeDocument({
+test("ingests base64 pdf content without external pdf binaries", async () => {
+  const result = await analyzeDocument({
     document: {
       filename: "invoice.pdf",
       content_type: "application/pdf",
@@ -73,6 +74,38 @@ test("ingests base64 pdf content without external pdf binaries", () => {
   assert.ok(result.missing_information.some((item) => item.reason.includes("text-layer based")));
 });
 
-test("rejects empty document text", () => {
-  assert.throws(() => analyzeDocument({ text: "" }), /non-empty text|non-empty document text|include non-empty text/i);
+test("uses configured OCR provider for images", async () => {
+  const imageBase64 = Buffer.from("fake-image-binary", "utf8").toString("base64");
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ text: "Receipt RC-9. Merchant: Acme Corp LLC. Paid USD 40 on 2026-07-01." }), { status: 200, headers: { "content-type": "application/json" } });
+
+  try {
+    const result = await analyzeDocument(
+      {
+        document: {
+          filename: "receipt.png",
+          content_type: "image/png",
+          content_base64: imageBase64,
+        },
+      },
+      {
+        ingestion: {
+          ocr: {
+            providerUrl: "https://ocr.example.test/extract",
+          },
+        },
+      }
+    );
+
+    assert.equal(result.provenance.ocr_applied, true);
+    assert.equal(result.document_type, "Receipt");
+    assert.ok(result.entities.monetary_values.includes("USD 40"));
+    assert.ok(result.missing_information.some((item) => item.reason.includes("OCR provider")));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("rejects empty document text", async () => {
+  await assert.rejects(() => analyzeDocument({ text: "" }), /non-empty text|non-empty document text|include non-empty text/i);
 });

@@ -446,28 +446,30 @@ function buildActionItems({ documentType, obligations, deadlines, risks, missing
   return actionItems;
 }
 
-function buildSummary(documentType, entities, obligations, deadlines, risks, ingestion) {
+function buildSummary(documentType, entities, obligations, deadlines, risks, ingestion, provenance) {
   return [
     `Document classified as ${documentType}.`,
     `Detected ${entities.people.length} people, ${entities.organizations.length} organizations, ${entities.dates.length} dates, and ${entities.monetary_values.length} monetary values.`,
     `Extracted ${obligations.length} obligations, ${deadlines.length} deadlines or time-sensitive events, and ${risks.length} risks.`,
     `Ingestion mode: ${ingestion.mode}${ingestion.filename ? ` (${ingestion.filename})` : ""}.`,
+    `Normalized text fingerprint: sha256:${provenance.normalized_text_sha256.slice(0, 16)}...`,
     "Output is structured for autonomous agents, X Layer applications, smart contracts, and workflow automation.",
   ].join(" ");
 }
 
-function scoreConfidence(documentTypeConfidence, entities, obligations, risks, text, ingestionWarnings) {
+function scoreConfidence(documentTypeConfidence, entities, obligations, risks, text, ingestionWarnings, provenance) {
   let score = documentTypeConfidence;
   if (entities.dates.length || entities.monetary_values.length || entities.organizations.length) score += 0.08;
   if (obligations.length) score += 0.05;
   if (risks.some((risk) => risk.type === "inferred")) score -= 0.03;
   if (ingestionWarnings.length > 0) score -= 0.04;
+  if (provenance.ocr_applied) score -= 0.03;
   if (text.length < 120) score -= 0.12;
   return Math.max(0.1, Math.min(0.98, Number(score.toFixed(2))));
 }
 
-export function analyzeDocument(input) {
-  const { text, ingestion } = ingestDocument(input);
+export async function analyzeDocument(input, options = {}) {
+  const { text, ingestion, provenance } = await ingestDocument(input, options.ingestion || {});
   if (!text || typeof text !== "string" || text.trim().length === 0) {
     throw new TypeError("analyzeDocument requires non-empty document text");
   }
@@ -484,7 +486,8 @@ export function analyzeDocument(input) {
 
   return {
     document_type: documentType,
-    summary: buildSummary(documentType, entities, obligations, deadlines, risks, ingestion),
+    summary: buildSummary(documentType, entities, obligations, deadlines, risks, ingestion, provenance),
+    provenance,
     entities,
     obligations,
     deadlines,
@@ -492,6 +495,6 @@ export function analyzeDocument(input) {
     risks,
     action_items: actionItems,
     missing_information: missingInformation,
-    confidence_score: scoreConfidence(documentTypeConfidence, entities, obligations, risks, normalizedText, ingestion.warnings),
+    confidence_score: scoreConfidence(documentTypeConfidence, entities, obligations, risks, normalizedText, ingestion.warnings, provenance),
   };
 }

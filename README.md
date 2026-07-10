@@ -1,8 +1,16 @@
 # Cortex
 
-Cortex is a Document Intelligence Agent Service Provider (ASP) for X Layer, the official OKX blockchain. It transforms unstructured document text and text-layer documents into structured intelligence for autonomous agents, smart contracts, applications, and onchain workflows.
+Cortex is a Document Intelligence Agent Service Provider (ASP) for X Layer, the official OKX blockchain. It transforms unstructured document text and documents into structured intelligence for autonomous agents, smart contracts, applications, and onchain workflows.
 
-Cortex is not a summarization tool. It extracts actionable document intelligence using a deterministic JSON contract with source-span traceability.
+Cortex is not a summarization tool. It extracts actionable document intelligence using a deterministic JSON contract with source-span traceability and provenance fingerprints.
+
+## Classification
+
+Current service class: `A2MCP`
+
+Reason: Cortex exposes a standardized API endpoint with deterministic request/response behavior. That fits OKX's A2MCP model. It does not currently negotiate scope, price, or delivery terms per task, so it is not operating as A2A.
+
+Cortex can later add a separate A2A offering for bespoke document-review services while keeping this API as A2MCP.
 
 ## Output Schema
 
@@ -10,6 +18,7 @@ Cortex is not a summarization tool. It extracts actionable document intelligence
 {
   "document_type": "",
   "summary": "",
+  "provenance": {},
   "entities": {},
   "obligations": [],
   "deadlines": [],
@@ -47,9 +56,51 @@ Supported ingestion modes:
 - Direct text
 - Base64 text-like files: `text/plain`, `text/markdown`, `text/csv`, `application/json`, `application/xml`
 - Base64 PDF with text-layer extraction
+- Base64 images or scanned PDFs through a pluggable OCR provider
 
-Current limitation:
-- Scanned PDFs and images still need an OCR backend. When OCR is unavailable, Cortex rejects image uploads instead of fabricating text.
+## OCR Provider Contract
+
+When `CORTEX_OCR_PROVIDER_URL` is set, Cortex sends:
+
+```json
+{
+  "filename": "receipt.png",
+  "content_type": "image/png",
+  "content_base64": "...",
+  "metadata": {},
+  "model": "optional"
+}
+```
+
+Expected response:
+
+```json
+{
+  "text": "extracted document text"
+}
+```
+
+Optional OCR env vars:
+- `CORTEX_OCR_PROVIDER_URL`
+- `CORTEX_OCR_API_KEY`
+- `CORTEX_OCR_AUTH_HEADER`
+- `CORTEX_OCR_MODEL`
+
+## Payment Modes
+
+Free mode:
+- Default behavior
+- Endpoint returns results directly
+
+Paid A2MCP mode via x402:
+- Set `CORTEX_X402_ENABLED=true`
+- Set `CORTEX_X402_PAY_TO`
+- Set `OKX_API_KEY`
+- Set `OKX_SECRET_KEY`
+- Set `OKX_PASSPHRASE`
+- Optional: `CORTEX_X402_PRICE`, `CORTEX_X402_NETWORK`, `OKX_BASE_URL`
+
+In x402 mode, Cortex protects `POST /v1/intelligence` with the official OKX Payment SDK middleware.
 
 ## Run Locally
 
@@ -64,6 +115,7 @@ Optional runtime controls:
 - `CORTEX_API_KEY`: require `Authorization: Bearer <token>` for analysis requests
 - `RATE_LIMIT_WINDOW_MS`: in-memory rate-limit window
 - `RATE_LIMIT_MAX_REQUESTS`: max requests per client/path within the window
+- `CORTEX_MAX_BODY_SIZE`: Express JSON body-size limit
 
 ## Analyze A Document
 

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildRuntimeConfig, handleHttpRequest, resetRateLimitStore } from "../src/server.js";
+import { buildRuntimeConfig, createExpressApp, handleHttpRequest, resetRateLimitStore } from "../src/server.js";
 
 test("serves health and asp metadata without binding a socket", async () => {
   resetRateLimitStore();
@@ -31,6 +31,7 @@ test("analyzes document payloads through the HTTP handler", async () => {
   assert.equal(response.statusCode, 200);
   const payload = JSON.parse(response.body);
   assert.equal(payload.document_type, "Invoice");
+  assert.equal(typeof payload.provenance.normalized_text_sha256, "string");
   assert.ok(payload.risks.length >= 1);
 });
 
@@ -70,4 +71,38 @@ test("supports bearer auth and rate limiting in-process", async () => {
 
   assert.equal(first.statusCode, 200);
   assert.equal(second.statusCode, 429);
+});
+
+test("reflects x402 payment mode when configured", async () => {
+  resetRateLimitStore();
+  const config = buildRuntimeConfig({
+    HOST: "127.0.0.1",
+    PORT: "8787",
+    CORTEX_X402_ENABLED: "true",
+    CORTEX_X402_PAY_TO: "0x000000000000000000000000000000000000dEaD",
+    OKX_API_KEY: "api",
+    OKX_SECRET_KEY: "secret",
+    OKX_PASSPHRASE: "passphrase",
+  });
+
+  const response = await handleHttpRequest({ method: "GET", url: "/.well-known/asp.json" }, config);
+  const payload = JSON.parse(response.body);
+
+  assert.equal(payload.payment_mode, "x402");
+  assert.equal(payload.classification.primary, "A2MCP");
+});
+
+test("builds an express app with x402 support when configured", () => {
+  const config = buildRuntimeConfig({
+    HOST: "127.0.0.1",
+    PORT: "8787",
+    CORTEX_X402_ENABLED: "true",
+    CORTEX_X402_PAY_TO: "0x000000000000000000000000000000000000dEaD",
+    OKX_API_KEY: "api",
+    OKX_SECRET_KEY: "secret",
+    OKX_PASSPHRASE: "passphrase",
+  });
+
+  const app = createExpressApp(config);
+  assert.equal(typeof app, "function");
 });

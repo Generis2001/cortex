@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import zlib from "node:zlib";
 
 const TEXT_LIKE_CONTENT_TYPES = new Set([
@@ -8,6 +9,10 @@ const TEXT_LIKE_CONTENT_TYPES = new Set([
   "application/xml",
   "text/xml",
 ]);
+
+function sha256(buffer) {
+  return crypto.createHash("sha256").update(buffer).digest("hex");
+}
 
 function normalizeDocumentPayload(input) {
   if (typeof input === "string") {
@@ -40,6 +45,10 @@ function normalizeDocumentPayload(input) {
 }
 
 function decodeBase64(contentBase64) {
+  if (!/^[A-Za-z0-9+/=\s]+$/.test(contentBase64)) {
+    throw new TypeError("document.content_base64 must be valid base64");
+  }
+
   try {
     return Buffer.from(contentBase64, "base64");
   } catch {
@@ -125,14 +134,89 @@ function inferTextContentType(filename) {
   if (lower.endsWith(".json")) return "application/json";
   if (lower.endsWith(".xml")) return "application/xml";
   if (lower.endsWith(".pdf")) return "application/pdf";
+  if (lower.endsWith(".png")) return "image/png";
+  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
   return null;
 }
 
-export function ingestDocument(input) {
+function buildProvenance({ sourceBuffer, normalizedText, ingestion, ocrApplied }) {
+  return {
+    hash_algorithm: "sha256",
+    source_bytes_sha256: sha256(sourceBuffer),
+    normalized_text_sha256: sha256(Buffer.from(normalizedText, "utf8")),
+    source_bytes_length: sourceBuffer.length,
+    normalized_text_length: normalizedText.length,
+    content_type: ingestion.content_type,
+    filename: ingestion.filename,
+    source_kind: ingestion.mode,
+    ocr_applied: ocrApplied,
+  };
+}
+
+function finalizeIngestion({ rawText, sourceBuffer, ingestion, metadata, ocrApplied }) {
+  const normalizedText = rawText.trim();
+  if (!normalizedText) throw new TypeError("Decoded document content is empty");
+
+  return {
+    text: normalizedText,
+    metadata,
+    ingestion,
+    provenance: buildProvenance({ sourceBuffer, normalizedText, ingestion, ocrApplied }),
+  };
+}
+
+function buildOcrHeaders(ocrConfig) {
+  const headers = { "content-type": "application/json" };
+  if (!ocrConfig?.apiKey) return headers;
+
+  const headerName = (ocrConfig.authHeader || "authorization").toLowerCase();
+  if (headerName === "authorization") {
+    headers.authorization = `Bearer ${ocrConfig.apiKey}`;
+  } else {
+    headers[headerName] = ocrConfig.apiKey;
+  }
+  return headers;
+}
+
+async function requestOcrText({ buffer, filename, contentType, metadata, ocrConfig }) {
+  if (!ocrConfig?.providerUrl) return null;
+
+  const fetchImpl = ocrConfig.fetchImpl || globalThis.fetch;
+  if (typeof fetchImpl !== "function") {
+    throw new TypeError("OCR provider is configured, but fetch is unavailable in this runtime");
+  }
+
+  const response = await fetchImpl(ocrConfig.providerUrl, {
+    method: "POST",
+    headers: buildOcrHeaders(ocrConfig),
+    body: JSON.stringify({
+      filename,
+      content_type: contentType,
+      content_base64: buffer.toString("base64"),
+      metadata,
+      model: ocrConfig.model || undefined,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new TypeError(`OCR provider request failed with status ${response.status}`);
+  }
+
+  const payload = await response.json();
+  if (!payload || typeof payload.text !== "string" || payload.text.trim().length === 0) {
+    throw new TypeError("OCR provider response must include a non-empty text field");
+  }
+
+  return payload.text;
+}
+
+export async function ingestDocument(input, options = {}) {
   const normalized = normalizeDocumentPayload(input);
   if (normalized.text) {
-    return {
-      text: normalized.text.trim(),
+    const sourceBuffer = Buffer.from(normalized.text, "utf8");
+    return finalizeIngestion({
+      rawText: normalized.text,
+      sourceBuffer,
       metadata: normalized.metadata,
       ingestion: {
         mode: "direct_text",
@@ -140,7 +224,8 @@ export function ingestDocument(input) {
         filename: null,
         warnings: [],
       },
-    };
+      ocrApplied: false,
+    });
   }
 
   const buffer = decodeBase64(normalized.contentBase64);
@@ -148,10 +233,9 @@ export function ingestDocument(input) {
   const contentType = normalized.contentType === "application/octet-stream" && inferredType ? inferredType : normalized.contentType;
 
   if (TEXT_LIKE_CONTENT_TYPES.has(contentType)) {
-    const text = decodeTextLikeBuffer(buffer);
-    if (!text) throw new TypeError("Decoded document content is empty");
-    return {
-      text,
+    return finalizeIngestion({
+      rawText: decodeTextLikeBuffer(buffer),
+      sourceBuffer: buffer,
       metadata: normalized.metadata,
       ingestion: {
         mode: "base64_document",
@@ -159,31 +243,78 @@ export function ingestDocument(input) {
         filename: normalized.filename,
         warnings: [],
       },
-    };
+      ocrApplied: false,
+    });
   }
 
   if (contentType === "application/pdf") {
     const text = extractPdfText(buffer);
-    if (!text) {
+    if (text) {
+      return finalizeIngestion({
+        rawText: text,
+        sourceBuffer: buffer,
+        metadata: normalized.metadata,
+        ingestion: {
+          mode: "base64_document",
+          content_type: contentType,
+          filename: normalized.filename,
+          warnings: ["PDF extraction is text-layer based. Scanned PDFs still require an OCR backend."],
+        },
+        ocrApplied: false,
+      });
+    }
+
+    const ocrText = await requestOcrText({
+      buffer,
+      filename: normalized.filename,
+      contentType,
+      metadata: normalized.metadata,
+      ocrConfig: options.ocr,
+    });
+
+    if (!ocrText) {
       throw new TypeError("Unable to extract text from PDF document");
     }
 
-    return {
-      text,
+    return finalizeIngestion({
+      rawText: ocrText,
+      sourceBuffer: buffer,
       metadata: normalized.metadata,
       ingestion: {
         mode: "base64_document",
         content_type: contentType,
         filename: normalized.filename,
-        warnings: [
-          "PDF extraction is text-layer based. Scanned PDFs still require an OCR backend.",
-        ],
+        warnings: ["PDF content was extracted via OCR provider."],
       },
-    };
+      ocrApplied: true,
+    });
   }
 
   if (contentType.startsWith("image/")) {
-    throw new TypeError("OCR is not configured in this runtime. Provide extracted text or a text-layer PDF.");
+    const ocrText = await requestOcrText({
+      buffer,
+      filename: normalized.filename,
+      contentType,
+      metadata: normalized.metadata,
+      ocrConfig: options.ocr,
+    });
+
+    if (!ocrText) {
+      throw new TypeError("OCR is not configured in this runtime. Provide extracted text or a text-layer PDF.");
+    }
+
+    return finalizeIngestion({
+      rawText: ocrText,
+      sourceBuffer: buffer,
+      metadata: normalized.metadata,
+      ingestion: {
+        mode: "base64_document",
+        content_type: contentType,
+        filename: normalized.filename,
+        warnings: ["Image content was extracted via OCR provider."],
+      },
+      ocrApplied: true,
+    });
   }
 
   throw new TypeError(`Unsupported document content_type: ${contentType}`);
