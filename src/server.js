@@ -103,6 +103,9 @@ function buildOpenApi(config) {
     },
     servers: [{ url: config.serviceBaseUrl }],
     paths: {
+      "/": {
+        get: { summary: "Service discovery", responses: { "200": { description: "Cortex service overview" } } },
+      },
       "/health": {
         get: { summary: "Service health check", responses: { "200": { description: "Service is healthy" } } },
       },
@@ -190,7 +193,7 @@ function checkRateLimit(config, clientId) {
 }
 
 function requireAuth(config, pathname, headers) {
-  if (!config.apiKey || pathname === "/health" || pathname === "/.well-known/asp.json" || pathname === "/openapi.json") {
+  if (!config.apiKey || pathname === "/" || pathname === "/health" || pathname === "/.well-known/asp.json" || pathname === "/openapi.json") {
     return null;
   }
 
@@ -259,6 +262,22 @@ export async function handleHttpRequest(requestLike, runtimeConfig = buildRuntim
   const clientId = requestLike.remoteAddress || headers["x-forwarded-for"] || "local";
   const rateLimitError = checkRateLimit(config, `${clientId}:${url.pathname}`);
   if (rateLimitError) return rateLimitError;
+
+  if (method === "GET" && url.pathname === "/") {
+    return sendJson(200, {
+      name: "cortex",
+      status: "ok",
+      service_type: "A2MCP",
+      description: "Document Intelligence ASP for X Layer.",
+      payment_mode: x402Configured(config) ? "x402" : "free",
+      docs: {
+        health: `${config.serviceBaseUrl}/health`,
+        asp_metadata: `${config.serviceBaseUrl}/.well-known/asp.json`,
+        openapi: `${config.serviceBaseUrl}/openapi.json`,
+        analyze: `${config.serviceBaseUrl}/v1/intelligence`,
+      },
+    });
+  }
 
   if (method === "GET" && url.pathname === "/health") {
     return sendJson(200, { status: "ok", service: "cortex", payment_mode: x402Configured(config) ? "x402" : "free" });

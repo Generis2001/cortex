@@ -6,9 +6,12 @@ test("serves health and asp metadata without binding a socket", async () => {
   resetRateLimitStore();
   const config = buildRuntimeConfig({ HOST: "127.0.0.1", PORT: "8787" });
 
+  const root = await handleHttpRequest({ method: "GET", url: "/" }, config);
   const health = await handleHttpRequest({ method: "GET", url: "/health" }, config);
   const meta = await handleHttpRequest({ method: "GET", url: "/.well-known/asp.json" }, config);
 
+  assert.equal(root.statusCode, 200);
+  assert.equal(JSON.parse(root.body).name, "cortex");
   assert.equal(health.statusCode, 200);
   assert.equal(JSON.parse(health.body).status, "ok");
   assert.equal(meta.statusCode, 200);
