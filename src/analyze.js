@@ -70,6 +70,7 @@ const ID_PATTERN = /\b(?:invoice|receipt|contract|case|po|purchase order|transac
 const CLAUSE_PATTERN = /\b(?:termination|confidentiality|indemnification|liability|governing law|jurisdiction|force majeure|non[- ]?compete|exclusivity|renewal|payment terms|intellectual property|dispute resolution)\b/gi;
 const REGULATORY_PATTERN = /\b(?:GDPR|HIPAA|SOX|SOC\s*2|ISO\s*27001|KYC|AML|OFAC|PCI\s*DSS|SEC|FINRA|IRS|FDA)\b/gi;
 const DIGITAL_ID_PATTERN = /\b(?:0x[a-fA-F0-9]{40}|[a-fA-F0-9]{64}|did:[a-z0-9]+:[A-Za-z0-9._:%-]+)\b/g;
+const ORGANIZATION_SUFFIX_PATTERN = /\b[A-Z][A-Za-z&,'-]*\.?(?:\s+[A-Z][A-Za-z&,'-]*\.?){0,5}\s+(?:Inc\.?|LLC|Ltd\.?|Limited|Corp\.?|Corporation|Company|Co\.?|Foundation|DAO|Bank|University|Hospital)\b/g;
 
 const OBLIGATION_VERBS = ["shall", "must", "will", "agrees to", "is required to", "responsible for", "undertakes to"];
 const DEADLINE_HINTS = ["due", "deadline", "expires", "expiration", "renewal", "renew", "payment", "milestone", "before", "by", "within", "no later than", "response period"];
@@ -162,7 +163,7 @@ function extractLabeledValues(text, labels) {
 
 function extractOrganizations(text) {
   const labeled = extractLabeledValues(text, ["company", "organization", "vendor", "supplier", "client", "customer", "employer", "issuer", "bill to", "ship to"]);
-  const suffixMatches = matchValues(text, /\b[A-Z][A-Za-z0-9&.,'-]*(?:\s+[A-Z][A-Za-z0-9&.,'-]*){0,5}\s+(?:Inc\.?|LLC|Ltd\.?|Limited|Corp\.?|Corporation|Company|Co\.?|Foundation|DAO|Bank|University|Hospital)\b/g);
+  const suffixMatches = matchValues(text, ORGANIZATION_SUFFIX_PATTERN);
   return unique([...labeled, ...suffixMatches]);
 }
 

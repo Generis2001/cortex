@@ -115,5 +115,7 @@ test("extracts ungrouped monetary values with four or more digits", async () => 
     text: "Invoice INV-42. Acme Corp must pay USD 1250 by August 15, 2026. Late payment incurs a 5% penalty.",
   });
 
+  assert.ok(result.entities.organizations.includes("Acme Corp"));
+  assert.ok(!result.entities.organizations.includes("Invoice INV-42. Acme Corp"));
   assert.ok(result.entities.monetary_values.includes("USD 1250"));
 });
